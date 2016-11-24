@@ -1,26 +1,26 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Runtime.Serialization;
+using System.Xml;
 using ConvNetSharp.Layers;
 
 namespace ConvNetSharp
 {
+    [DataContract]
     public class Net
     {
-        private readonly List<LayerBase> layers = new List<LayerBase>();
-
-        public List<LayerBase> Layers
-        {
-            get { return this.layers; }
-        }
+        [DataMember]
+        public readonly List<LayerBase> Layers = new List<LayerBase>();
 
         public void AddLayer(LayerBase layer)
         {
             int inputWidth = 0, inputHeight = 0, inputDepth = 0;
-            if (this.layers.Count > 0)
+            if (this.Layers.Count > 0)
             {
-                inputWidth = this.layers[this.layers.Count - 1].OutputWidth;
-                inputHeight = this.layers[this.layers.Count - 1].OutputHeight;
-                inputDepth = this.layers[this.layers.Count - 1].OutputDepth;
+                inputWidth = this.Layers[this.Layers.Count - 1].OutputWidth;
+                inputHeight = this.Layers[this.Layers.Count - 1].OutputHeight;
+                inputDepth = this.Layers[this.Layers.Count - 1].OutputDepth;
             }
 
             var classificationLayer = layer as IClassificationLayer;
@@ -32,7 +32,7 @@ namespace ConvNetSharp
                 inputHeight = fullyConnLayer.OutputHeight;
                 inputDepth = fullyConnLayer.OutputDepth;
 
-                this.layers.Add(fullyConnLayer);
+                this.Layers.Add(fullyConnLayer);
             }
 
             var regressionLayer = layer as RegressionLayer;
@@ -44,7 +44,7 @@ namespace ConvNetSharp
                 inputHeight = fullyConnLayer.OutputHeight;
                 inputDepth = fullyConnLayer.OutputDepth;
 
-                this.layers.Add(fullyConnLayer);
+                this.Layers.Add(fullyConnLayer);
             }
 
             var dotProductLayer = layer as IDotProductLayer;
@@ -58,12 +58,12 @@ namespace ConvNetSharp
                 }
             }
 
-            if (this.layers.Count > 0)
+            if (this.Layers.Count > 0)
             {
                 layer.Init(inputWidth, inputHeight, inputDepth);
             }
 
-            this.layers.Add(layer);
+            this.Layers.Add(layer);
 
             if (dotProductLayer != null)
             {
@@ -74,45 +74,45 @@ namespace ConvNetSharp
                     case Activation.Relu:
                         var reluLayer = new ReluLayer();
                         reluLayer.Init(layer.OutputWidth, layer.OutputHeight, layer.OutputDepth);
-                        this.layers.Add(reluLayer);
+                        this.Layers.Add(reluLayer);
                         break;
                     case Activation.Sigmoid:
                         var sigmoidLayer = new SigmoidLayer();
                         sigmoidLayer.Init(layer.OutputWidth, layer.OutputHeight, layer.OutputDepth);
-                        this.layers.Add(sigmoidLayer);
+                        this.Layers.Add(sigmoidLayer);
                         break;
                     case Activation.Tanh:
                         var tanhLayer = new TanhLayer();
                         tanhLayer.Init(layer.OutputWidth, layer.OutputHeight, layer.OutputDepth);
-                        this.layers.Add(tanhLayer);
+                        this.Layers.Add(tanhLayer);
                         break;
                     case Activation.Maxout:
                         var maxoutLayer = new MaxoutLayer { GroupSize = dotProductLayer.GroupSize };
                         maxoutLayer.Init(layer.OutputWidth, layer.OutputHeight, layer.OutputDepth);
-                        this.layers.Add(maxoutLayer);
+                        this.Layers.Add(maxoutLayer);
                         break;
                     default:
                         throw new ArgumentOutOfRangeException();
                 }
             }
 
-            var lastLayer = this.layers[this.layers.Count - 1];
+            var lastLayer = this.Layers[this.Layers.Count - 1];
 
             if (!(layer is DropOutLayer) && layer.DropProb.HasValue)
             {
                 var dropOutLayer = new DropOutLayer(layer.DropProb.Value);
                 dropOutLayer.Init(lastLayer.OutputWidth, lastLayer.OutputHeight, lastLayer.OutputDepth);
-                this.layers.Add(dropOutLayer);
+                this.Layers.Add(dropOutLayer);
             }
         }
 
         public Volume Forward(Volume volume, bool isTraining = false)
         {
-            var activation = this.layers[0].Forward(volume, isTraining);
+            var activation = this.Layers[0].Forward(volume, isTraining);
 
-            for (var i = 1; i < this.layers.Count; i++)
+            for (var i = 1; i < this.Layers.Count; i++)
             {
-                var layerBase = this.layers[i];
+                var layerBase = this.Layers[i];
                 activation = layerBase.Forward(activation, isTraining);
             }
 
@@ -123,7 +123,7 @@ namespace ConvNetSharp
         {
             this.Forward(volume);
 
-            var lastLayer = this.layers[this.layers.Count - 1] as ILastLayer;
+            var lastLayer = this.Layers[this.Layers.Count - 1] as ILastLayer;
             if (lastLayer != null)
             {
                 var loss = lastLayer.Backward(y);
@@ -137,7 +137,7 @@ namespace ConvNetSharp
         {
             this.Forward(volume);
 
-            var lastLayer = this.layers[this.layers.Count - 1] as ILastLayer;
+            var lastLayer = this.Layers[this.Layers.Count - 1] as ILastLayer;
             if (lastLayer != null)
             {
                 var loss = lastLayer.Backward(y);
@@ -149,15 +149,15 @@ namespace ConvNetSharp
 
         public double Backward(double y)
         {
-            var n = this.layers.Count;
-            var lastLayer = this.layers[n - 1] as ILastLayer;
+            var n = this.Layers.Count;
+            var lastLayer = this.Layers[n - 1] as ILastLayer;
             if (lastLayer != null)
             {
                 var loss = lastLayer.Backward(y); // last layer assumed to be loss layer
                 for (var i = n - 2; i >= 0; i--)
                 {
                     // first layer assumed input
-                    this.layers[i].Backward();
+                    this.Layers[i].Backward();
                 }
                 return loss;
             }
@@ -167,15 +167,15 @@ namespace ConvNetSharp
 
         public double Backward(double[] y)
         {
-            var n = this.layers.Count;
-            var lastLayer = this.layers[n - 1] as ILastLayer;
+            var n = this.Layers.Count;
+            var lastLayer = this.Layers[n - 1] as ILastLayer;
             if (lastLayer != null)
             {
                 var loss = lastLayer.Backward(y); // last layer assumed to be loss layer
                 for (var i = n - 2; i >= 0; i--)
                 {
                     // first layer assumed input
-                    this.layers[i].Backward();
+                    this.Layers[i].Backward();
                 }
                 return loss;
             }
@@ -187,7 +187,7 @@ namespace ConvNetSharp
         {
             // this is a convenience function for returning the argmax
             // prediction, assuming the last layer of the net is a softmax
-            var softmaxLayer = this.layers[this.layers.Count - 1] as SoftmaxLayer;
+            var softmaxLayer = this.Layers[this.Layers.Count - 1] as SoftmaxLayer;
             if (softmaxLayer == null)
             {
                 throw new Exception("GetPrediction function assumes softmax as last layer of the net!");
@@ -213,13 +213,46 @@ namespace ConvNetSharp
         {
             var response = new List<ParametersAndGradients>();
 
-            foreach (LayerBase t in this.layers)
+            foreach (LayerBase t in Layers)
             {
                 List<ParametersAndGradients> parametersAndGradients = t.GetParametersAndGradients();
                 response.AddRange(parametersAndGradients);
             }
 
             return response;
+        }
+
+        public void Save(string fileName)
+        {
+            using (FileStream fs = new FileStream(fileName, FileMode.Create))
+            {
+                using (XmlDictionaryWriter bdw = XmlDictionaryWriter.CreateBinaryWriter(fs))
+                {
+                    var ser = new DataContractSerializer(typeof(Net));
+                    ser.WriteObject(bdw, this);
+                    bdw.Flush();
+                }                               
+            }
+        }
+
+        public static Net Load(string fileName)
+        {
+            Net ret;
+            using (FileStream fs = new FileStream(fileName, FileMode.Open))
+            {
+                var q = new XmlDictionaryReaderQuotas()
+                {
+                    MaxArrayLength = 1024 * 1024 * 10, // 10MB
+                    MaxBytesPerRead = 1024 * 1024 * 10 // 10MB
+                };
+
+                using (var reader = XmlDictionaryReader.CreateBinaryReader(fs, q))
+                {
+                    var ser = new DataContractSerializer(typeof(Net));
+                    ret = (Net)ser.ReadObject(reader, true);
+                }
+            }
+            return ret;
         }
     }
 }

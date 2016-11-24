@@ -30,7 +30,7 @@ namespace MnistDemo
         private const string trainingImageFile = "train-images-idx3-ubyte.gz";
         private const string testingLabelFile = "t10k-labels-idx1-ubyte.gz";
         private const string testingImageFile = "t10k-images-idx3-ubyte.gz";
-        
+
         private void MnistDemo()
         {
             Directory.CreateDirectory(mnistFolder);
@@ -44,6 +44,7 @@ namespace MnistDemo
             Console.WriteLine("Downloading Mnist training files...");
             DownloadFile(urlMnist + trainingLabelFile, trainingLabelFilePath);
             DownloadFile(urlMnist + trainingImageFile, trainingImageFilePath);
+
             Console.WriteLine("Downloading Mnist testing files...");
             DownloadFile(urlMnist + testingLabelFile, testingLabelFilePath);
             DownloadFile(urlMnist + testingImageFile, testingImageFilePath);
@@ -60,14 +61,36 @@ namespace MnistDemo
                 return;
             }
 
-            // Create network
-            this.net = new Net();
-            this.net.AddLayer(new InputLayer(24, 24, 1));
-            this.net.AddLayer(new ConvLayer(5, 5, 8) { Stride = 1, Pad = 2, Activation = Activation.Relu });
-            this.net.AddLayer(new PoolLayer(2, 2) { Stride = 2 });
-            this.net.AddLayer(new ConvLayer(5, 5, 16) { Stride = 1, Pad = 2, Activation = Activation.Relu });
-            this.net.AddLayer(new PoolLayer(3, 3) { Stride = 3 });
-            this.net.AddLayer(new SoftmaxLayer(10));
+            //ExtractImages();
+
+            Console.WriteLine($"load net?");
+            if (Console.ReadKey(true).Key == ConsoleKey.Enter)
+            {
+                var f = Path.Combine(mnistFolder, "net.bin");
+                Console.WriteLine($"loading: {f}");
+
+                this.net = Net.Load(f);
+            }
+            else
+            {
+                this.net = new Net();
+                this.net.AddLayer(new InputLayer(24, 24, 1));
+                this.net.AddLayer(new ConvLayer(12, 12, 8)
+                {
+                    Stride = 1,
+                    Pad = 2,
+                    Activation = Activation.Relu
+                });
+                //this.net.AddLayer(new PoolLayer(2, 2) { Stride = 2 });
+                this.net.AddLayer(new ConvLayer(6, 6, 16)
+                {
+                    Stride = 1,
+                    Pad = 2,
+                    Activation = Activation.Relu
+                });
+                //this.net.AddLayer(new PoolLayer(3, 3) { Stride = 3 });
+                this.net.AddLayer(new SoftmaxLayer(10));
+            }
 
             this.trainer = new AdadeltaTrainer(this.net)
             {
@@ -80,7 +103,49 @@ namespace MnistDemo
             {
                 var sample = this.SampleTrainingInstance();
                 this.Step(sample);
-            } while (!Console.KeyAvailable);
+            }
+            while (!Console.KeyAvailable);
+            Console.ReadKey(true);
+
+            Console.WriteLine($"save net?");
+            if (Console.ReadKey(true).Key == ConsoleKey.Enter)
+            {
+                var f = Path.Combine(mnistFolder, "net.bin");
+                Console.WriteLine($"saving: {f}");
+
+                net.Save(f);
+            }
+            Console.WriteLine("done.");
+            Console.ReadKey();
+        }
+
+        private void ExtractImages()
+        {
+            int x = 0;
+            foreach (var t in training)
+            {
+                var dir = Path.Combine(mnistFolder, Path.GetFileNameWithoutExtension(trainingImageFile), $"{t.Label}");
+                if (!Directory.Exists(dir))
+                {
+                    Directory.CreateDirectory(dir);
+                }
+                var f = Path.Combine(dir, $"{x++}.raw");
+
+                File.WriteAllBytes(f, t.Image);
+            }
+
+            x = 0;
+            foreach (var t in testing)
+            {
+                var dir = Path.Combine(mnistFolder, Path.GetFileNameWithoutExtension(testingImageFile), $"{t.Label}");
+                if (!Directory.Exists(dir))
+                {
+                    Directory.CreateDirectory(dir);
+                }
+                var f = Path.Combine(dir, $"{x++}.raw");
+
+                File.WriteAllBytes(f, t.Image);
+            }
         }
 
         private void DownloadFile(string urlFile, string destFilepath)
@@ -129,7 +194,7 @@ namespace MnistDemo
             this.wLossWindow.Add(lossw);
             this.trainAccWindow.Add(trainAcc);
 
-            if (this.stepCount % 200 == 0)
+            if (this.stepCount % 10 == 0)
             {
                 if (this.xLossWindow.Count == this.xLossWindow.Capacity)
                 {
@@ -144,6 +209,8 @@ namespace MnistDemo
                     Console.WriteLine("Example seen: {0} Fwd: {1}ms Bckw: {2}ms", this.stepCount,
                         Math.Round(this.trainer.ForwardTime.TotalMilliseconds, 2),
                         Math.Round(this.trainer.BackwardTime.TotalMilliseconds, 2));
+
+                    Console.WriteLine();
                 }
             }
 
@@ -235,11 +302,20 @@ namespace MnistDemo
 
         private class Item
         {
-            public Volume Volume { get; set; }
+            public Volume Volume
+            {
+                get; set;
+            }
 
-            public int Label { get; set; }
+            public int Label
+            {
+                get; set;
+            }
 
-            public bool IsValidation { get; set; }
+            public bool IsValidation
+            {
+                get; set;
+            }
         }
     }
 }
