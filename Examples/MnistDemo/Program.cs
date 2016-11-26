@@ -31,6 +31,8 @@ namespace MnistDemo
         private const string testingLabelFile = "t10k-labels-idx1-ubyte.gz";
         private const string testingImageFile = "t10k-images-idx3-ubyte.gz";
 
+        int[] numbers = new int[] { 0, 1, 2, 3/*, 4, 5, 6, 7, 8, 9*/ };
+
         private void MnistDemo()
         {
             Directory.CreateDirectory(mnistFolder);
@@ -51,8 +53,9 @@ namespace MnistDemo
 
             // Load data
             Console.WriteLine("Loading the datasets...");
-            this.training = MnistReader.Load(trainingLabelFilePath, trainingImageFilePath);
-            this.testing = MnistReader.Load(testingLabelFilePath, testingImageFilePath);
+            
+            this.training = MnistReader.Load(trainingLabelFilePath, trainingImageFilePath).Where(p => numbers.Contains(p.Label)).ToList();
+            this.testing = MnistReader.Load(testingLabelFilePath, testingImageFilePath).Where(p => numbers.Contains(p.Label)).ToList();
 
             if (this.training.Count == 0 || this.testing.Count == 0)
             {
@@ -61,35 +64,40 @@ namespace MnistDemo
                 return;
             }
 
+            Console.WriteLine($"datasets training: {this.training.Count}, testing: {this.testing.Count}");
+
             //ExtractImages();
 
-            Console.WriteLine($"load net?");
-            if (Console.ReadKey(true).Key == ConsoleKey.Enter)
+            var netFile = Path.Combine(mnistFolder, $"net{string.Join("", numbers)}.bin");
+            if (File.Exists(netFile))
             {
-                var f = Path.Combine(mnistFolder, "net.bin");
-                Console.WriteLine($"loading: {f}");
-
-                this.net = Net.Load(f);
+                Console.WriteLine($"load {netFile}?");
+                if (Console.ReadKey(true).Key == ConsoleKey.Enter)
+                {
+                    Console.WriteLine($"loading...");
+                    this.net = Net.Load(netFile);
+                }
             }
-            else
+
+            if(this.net == null)
             {
                 this.net = new Net();
                 this.net.AddLayer(new InputLayer(24, 24, 1));
-                this.net.AddLayer(new ConvLayer(12, 12, 8)
+               
+                this.net.AddLayer(new ConvLayer(3, 3, 11)
                 {
                     Stride = 1,
                     Pad = 2,
                     Activation = Activation.Relu
                 });
-                //this.net.AddLayer(new PoolLayer(2, 2) { Stride = 2 });
-                this.net.AddLayer(new ConvLayer(6, 6, 16)
+                this.net.AddLayer(new ConvLayer(3, 3, 11)
                 {
                     Stride = 1,
                     Pad = 2,
                     Activation = Activation.Relu
                 });
-                //this.net.AddLayer(new PoolLayer(3, 3) { Stride = 3 });
-                this.net.AddLayer(new SoftmaxLayer(10));
+                
+                this.net.AddLayer(new SoftmaxLayer(numbers.Length * numbers.Length));
             }
 
             this.trainer = new AdadeltaTrainer(this.net)
@@ -98,20 +106,31 @@ namespace MnistDemo
                 L2Decay = 0.001,
             };
 
-            Console.WriteLine("Convolutional neural network learning...[Press any key to stop]");
-            do
-            {
-                var sample = this.SampleTrainingInstance();
-                this.Step(sample);
-            }
-            while (!Console.KeyAvailable);
-            Console.ReadKey(true);
+            Console.WriteLine("Training...[Press any key to stop]");
 
-            Console.WriteLine($"save net?");
+            bool ok = false;
+            while (!ok)
+            {
+                do
+                {
+                    var sample = this.SampleTrainingInstance();
+
+                    ok = this.Step(sample);
+                }
+                while (!ok && !Console.KeyAvailable);
+
+                if(!ok)
+                Console.ReadKey(true);
+
+                Console.WriteLine($"stop? [ENTER: continue]");
+                ok = !(Console.ReadKey(true).Key == ConsoleKey.Enter);
+            }
+
+            Console.WriteLine($"save {netFile}?");
             if (Console.ReadKey(true).Key == ConsoleKey.Enter)
             {
-                var f = Path.Combine(mnistFolder, "net.bin");
-                Console.WriteLine($"saving: {f}");
+                var f = Path.Combine(mnistFolder, netFile);
+                Console.WriteLine($"saving...");
 
                 net.Save(f);
             }
@@ -167,7 +186,7 @@ namespace MnistDemo
             }
         }
 
-        private void Step(Item sample)
+        private bool Step(Item sample)
         {
             var x = sample.Volume;
             var y = sample.Label;
@@ -179,7 +198,7 @@ namespace MnistDemo
                 var yhat = this.net.GetPrediction();
                 var valAcc = yhat == y ? 1.0 : 0.0;
                 this.valAccWindow.Add(valAcc);
-                return;
+                return false;
             }
 
             // train on it with network
@@ -194,7 +213,7 @@ namespace MnistDemo
             this.wLossWindow.Add(lossw);
             this.trainAccWindow.Add(trainAcc);
 
-            if (this.stepCount % 10 == 0)
+            if (this.stepCount % 50 == 0)
             {
                 if (this.xLossWindow.Count == this.xLossWindow.Capacity)
                 {
@@ -202,24 +221,30 @@ namespace MnistDemo
                     var xw = this.wLossWindow.Items.Average();
                     var loss = xa + xw;
 
-                    Console.WriteLine("Loss: {0} Train accuracy: {1}% Test accuracy: {2}%", loss,
-                        Math.Round(this.trainAccWindow.Items.Average() * 100.0, 2),
-                        Math.Round(this.valAccWindow.Items.Average() * 100.0, 2));
+                    var trainAccu = Math.Round(this.trainAccWindow.Items.Average() * 100.0, 2);
+                    var testAccu = Math.Round(this.valAccWindow.Items.Average() * 100.0, 2);
+
+                    Console.WriteLine($"Loss: {loss} Train accuracy: {trainAccu}% Test accuracy: {testAccu}%");
 
                     Console.WriteLine("Example seen: {0} Fwd: {1}ms Bckw: {2}ms", this.stepCount,
                         Math.Round(this.trainer.ForwardTime.TotalMilliseconds, 2),
                         Math.Round(this.trainer.BackwardTime.TotalMilliseconds, 2));
 
                     Console.WriteLine();
+
+                    if (testAccu >= 99)
+                        return true;
                 }
             }
 
             if (this.stepCount % 1000 == 0)
             {
-                this.TestPredict();
+                //this.TestPredict();
             }
 
             this.stepCount++;
+
+            return false;
         }
 
         private void TestPredict()
@@ -230,7 +255,7 @@ namespace MnistDemo
                 var y = sample[0].Label; // ground truth label
 
                 // forward prop it through the network
-                var average = new Volume(1, 1, 10, 0.0);
+                var average = new Volume(1, 1, numbers.Length, 0.0);
                 var n = sample.Count;
                 for (var j = 0; j < n; j++)
                 {
