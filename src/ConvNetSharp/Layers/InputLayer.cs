@@ -1,8 +1,10 @@
+using System;
 using System.Runtime.Serialization;
 
 namespace ConvNetSharp.Layers
 {
     [DataContract]
+    [Serializable]
     public sealed class InputLayer : LayerBase
     {
         public InputLayer(int inputWidth, int inputHeight, int inputDepth)
@@ -14,7 +16,7 @@ namespace ConvNetSharp.Layers
             this.OutputDepth = inputDepth;
         }
 
-        public override Volume Forward(Volume input, bool isTraining = false)
+        public override IVolume Forward(IVolume input, bool isTraining = false)
         {
             this.InputActivation = input;
             this.OutputActivation = input;
@@ -23,6 +25,11 @@ namespace ConvNetSharp.Layers
 
         public override void Backward()
         {
+        }
+
+        public override IVolume Forward(bool isTraining)
+        {
+            return this.OutputActivation;
         }
     }
 }

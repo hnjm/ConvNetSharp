@@ -1,19 +1,9 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Runtime.Serialization;
 
 namespace ConvNetSharp.Layers
 {
-    public class ParametersAndGradients
-    {
-        public double[] Parameters { get; set; }
-
-        public double[] Gradients { get; set; }
-
-        public double? L2DecayMul { get; set; }
-
-        public double? L1DecayMul { get; set; }
-    }
-
     [KnownType(typeof(ConvLayer))]
     [KnownType(typeof(DropOutLayer))]
     [KnownType(typeof(FullyConnLayer))]
@@ -27,11 +17,12 @@ namespace ConvNetSharp.Layers
     [KnownType(typeof(SvmLayer))]
     [KnownType(typeof(TanhLayer))]
     [DataContract]
+    [Serializable]
     public abstract class LayerBase
     {
-        public Volume InputActivation { get; protected set; }
+        public IVolume InputActivation { get; protected set; }
 
-        public Volume OutputActivation { get; protected set; }
+        public IVolume OutputActivation { get; protected set; }
 
         [DataMember]
         public int OutputDepth { get; protected set; }
@@ -43,24 +34,26 @@ namespace ConvNetSharp.Layers
         public int OutputHeight { get; protected set; }
 
         [DataMember]
-        protected int InputDepth { get; private set; }
+        public int InputDepth { get; private set; }
 
         [DataMember]
-        protected int InputWidth { get; private set; }
+        public int InputWidth { get; private set; }
 
         [DataMember]
-        protected int InputHeight { get; private set; }
+        public int InputHeight { get; private set; }
 
         [DataMember]
-        protected int Width { get; set; }
+        public LayerBase Child { get; set; }
 
         [DataMember]
-        protected int Height { get; set; }
+        public List<LayerBase> Parents { get; set; } = new List<LayerBase>();
 
-        [DataMember]
-        public double? DropProb { get; protected set; }
+        public abstract IVolume Forward(IVolume input, bool isTraining = false);
 
-        public abstract Volume Forward(Volume input, bool isTraining = false);
+        public virtual IVolume Forward(bool isTraining)
+        {
+            return this.Forward(this.Parents[0].Forward(isTraining), isTraining);
+        }
 
         public abstract void Backward();
 
@@ -74,6 +67,14 @@ namespace ConvNetSharp.Layers
         public virtual List<ParametersAndGradients> GetParametersAndGradients()
         {
             return new List<ParametersAndGradients>();
+        }
+
+        internal void ConnectTo(LayerBase layer)
+        {
+            this.Child = layer;
+            layer.Parents.Add(this);
+
+            layer.Init(this.OutputWidth, this.OutputHeight, this.OutputDepth);
         }
     }
 }

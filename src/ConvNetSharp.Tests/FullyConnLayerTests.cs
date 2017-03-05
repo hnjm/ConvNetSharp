@@ -1,5 +1,8 @@
 ﻿using ConvNetSharp.Layers;
 using NUnit.Framework;
+using System.IO;
+using System.Runtime.Serialization;
+using System.Runtime.Serialization.Formatters.Binary;
 
 namespace ConvNetSharp.Tests
 {
@@ -7,32 +10,79 @@ namespace ConvNetSharp.Tests
     public class FullyConnLayerTests
     {
         [Test]
-        public void GradientWrtInputCheck2()
+        [TestCase(2, 2, 2, 2)]
+        [TestCase(20, 20, 2, 20)]
+        public void GradientWrtParametersCheck(int inputWidth, int inputHeight, int inputDepth, int neuronCount)
         {
-            const int inputWidth = 20;
-            const int inputHeight = 20;
-            const int inputDepth = 2;
-
             // Create layer
-            const int neuronCount = 20;
             var layer = new FullyConnLayer(neuronCount);
 
-            GradientCheckTools.GradientCheck(layer, inputWidth, inputHeight, inputDepth);
+            GradientCheckTools.GradienWrtParameterstCheck(inputWidth, inputHeight, inputDepth, layer);
         }
 
         [Test]
-        public void GradientWrtParametersCheck()
+        public void SerializationTest()
         {
-            const int inputWidth = 2;
-            const int inputHeight = 2;
-            const int inputDepth = 2;
-            const int neuronCount = 2;
+            // Create a FullyConnLayer
+            var layer = new FullyConnLayer(20)
+            {
+                BiasPref = 0.1,
+            };
+            layer.Init(10, 10, 3);
 
-            // Create layer
-            var layer = new FullyConnLayer(neuronCount);
-            layer.Init(inputWidth, inputHeight, inputDepth);
+            foreach (var filter in layer.Filters)
+            {
+                for (int i = 0; i < filter.Length; i++)
+                {
+                    filter.Set(i, i);
+                }
+            }
 
-            GradientCheckTools.GradienWrtParameterstCheck(inputWidth, inputHeight, inputDepth, layer);
+            for (int i = 0; i < layer.Biases.Length; i++)
+            {
+                layer.Biases.Set(i, i);
+            }
+
+            FullyConnLayer deserialized;
+            using (var ms = new MemoryStream())
+            {
+                // Serialize
+                IFormatter formatter = new BinaryFormatter();
+                formatter.Serialize(ms, layer);
+
+                // Deserialize
+                ms.Position = 0;
+                deserialized = formatter.Deserialize(ms) as FullyConnLayer;
+            }
+
+
+            Assert.AreEqual(layer.BiasPref, deserialized.BiasPref);
+            Assert.AreEqual(layer.Filters.Count, deserialized.Filters.Count);
+            Assert.AreEqual(layer.InputDepth, deserialized.InputDepth);
+            Assert.AreEqual(layer.InputHeight, deserialized.InputHeight);
+            Assert.AreEqual(layer.InputWidth, deserialized.InputWidth);
+            Assert.AreEqual(layer.L1DecayMul, deserialized.L1DecayMul);
+            Assert.AreEqual(layer.L2DecayMul, deserialized.L2DecayMul);
+            Assert.AreEqual(layer.NeuronCount, deserialized.NeuronCount);
+            Assert.AreEqual(layer.OutputDepth, deserialized.OutputDepth);
+            Assert.AreEqual(layer.OutputHeight, deserialized.OutputHeight);
+            Assert.AreEqual(layer.OutputWidth, deserialized.OutputWidth);
+
+            for (int j = 0; j < layer.Filters.Count; j++)
+            {
+                var filter = layer.Filters[j];
+                var deserializedFilter = deserialized.Filters[j];
+
+                for (int i = 0; i < filter.Length; i++)
+                {
+                    Assert.AreEqual(filter.Get(i), deserializedFilter.Get(i));
+                }
+            }
+
+            for (int i = 0; i < layer.Biases.Length; i++)
+            {
+                Assert.AreEqual(layer.Biases.Get(i), deserialized.Biases.Get(i));
+            }
         }
     }
 }

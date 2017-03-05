@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -31,7 +32,7 @@ namespace MnistDemo
         private const string testingLabelFile = "t10k-labels-idx1-ubyte.gz";
         private const string testingImageFile = "t10k-images-idx3-ubyte.gz";
 
-        int[] numbers = new int[] { 0, 1, 2, 3/*, 4, 5, 6, 7, 8, 9*/ };
+        int[] numbers = new int[] { 0, 1, 2, 3 /*, 4, 5, 6, 7, 8, 9*/ };
 
         private void MnistDemo()
         {
@@ -53,7 +54,7 @@ namespace MnistDemo
 
             // Load data
             Console.WriteLine("Loading the datasets...");
-            
+
             this.training = MnistReader.Load(trainingLabelFilePath, trainingImageFilePath).Where(p => numbers.Contains(p.Label)).ToList();
             this.testing = MnistReader.Load(testingLabelFilePath, testingImageFilePath).Where(p => numbers.Contains(p.Label)).ToList();
 
@@ -79,25 +80,22 @@ namespace MnistDemo
                 }
             }
 
-            if(this.net == null)
+            if (this.net == null)
             {
                 this.net = new Net();
                 this.net.AddLayer(new InputLayer(24, 24, 1));
-               
-                this.net.AddLayer(new ConvLayer(3, 3, 11)
-                {
-                    Stride = 1,
-                    Pad = 2,
-                    Activation = Activation.Relu
-                });
-                this.net.AddLayer(new ConvLayer(3, 3, 11)
-                {
-                    Stride = 1,
-                    Pad = 2,
-                    Activation = Activation.Relu
-                });
-                
-                this.net.AddLayer(new SoftmaxLayer(numbers.Length * numbers.Length));
+
+                this.net.AddLayer(new ConvLayer(5, 5, 8) { Stride = 1, Pad = 2 });
+                this.net.AddLayer(new ReluLayer());
+                //this.net.AddLayer(new PoolLayer(2, 2) { Stride = 2 });
+
+                this.net.AddLayer(new ConvLayer(5, 5, 16) { Stride = 1, Pad = 2 });
+                this.net.AddLayer(new ReluLayer());
+                //this.net.AddLayer(new PoolLayer(3, 3) { Stride = 3 });
+
+                this.net.AddLayer(new FullyConnLayer(numbers.Length));
+                //this.net.AddLayer(new DropOutLayer());
+                this.net.AddLayer(new SoftmaxLayer(numbers.Length));                
             }
 
             this.trainer = new AdadeltaTrainer(this.net)
@@ -105,6 +103,17 @@ namespace MnistDemo
                 BatchSize = 20,
                 L2Decay = 0.001,
             };
+
+            Console.WriteLine($"limit cpu cores to 1?");
+            if (Console.ReadKey(true).Key == ConsoleKey.Enter)
+            {
+                using (Process Proc = Process.GetCurrentProcess())
+                {
+                    long AffinityMask = (long)Proc.ProcessorAffinity;
+                    AffinityMask = 1;
+                    Proc.ProcessorAffinity = (IntPtr)AffinityMask;
+                }
+            }
 
             Console.WriteLine("Training...[Press any key to stop]");
 
@@ -119,8 +128,8 @@ namespace MnistDemo
                 }
                 while (!ok && !Console.KeyAvailable);
 
-                if(!ok)
-                Console.ReadKey(true);
+                if (!ok)
+                    Console.ReadKey(true);
 
                 Console.WriteLine($"stop? [ENTER: continue]");
                 ok = !(Console.ReadKey(true).Key == ConsoleKey.Enter);
@@ -263,7 +272,7 @@ namespace MnistDemo
                     average.AddFrom(a);
                 }
 
-                var predictions = average.Weights.Select((w, k) => new { Label = k, Weight = w }).OrderBy(o => -o.Weight);
+                var predictions = average.Select((w, k) => new { Label = k, Weight = w }).OrderBy(o => -o.Weight);
             }
         }
 
@@ -285,13 +294,13 @@ namespace MnistDemo
             {
                 for (var j = 0; j < 28; j++)
                 {
-                    x.Weights[j + i * 28] = entry.Image[j + i * 28] / 255.0;
+                    x.Set(j + i * 28, entry.Image[j + i * 28] / 255.0);
                 }
             }
 
-            x = x.Augment(24);
+            var result = x.Augment(24);
 
-            return new Item { Volume = x, Label = entry.Label, IsValidation = n % 10 == 0 };
+            return new Item { Volume = result, Label = entry.Label, IsValidation = n % 10 == 0 };
         }
 
         private List<Item> SampleTestingInstance()
@@ -307,7 +316,7 @@ namespace MnistDemo
             {
                 for (var j = 0; j < 28; j++)
                 {
-                    x.Weights[j + i * 28] = entry.Image[j + i * 28] / 255.0;
+                    x.Set(j + i * 28, entry.Image[j + i * 28] / 255.0);
                 }
             }
 
@@ -327,7 +336,7 @@ namespace MnistDemo
 
         private class Item
         {
-            public Volume Volume
+            public IVolume Volume
             {
                 get; set;
             }

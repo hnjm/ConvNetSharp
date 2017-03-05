@@ -12,8 +12,11 @@ namespace Classify2DDemo
         {
             var net = new Net();
             net.AddLayer(new InputLayer(1, 1, 2));
-            net.AddLayer(new FullyConnLayer(6, Activation.Tanh));
-            net.AddLayer(new FullyConnLayer(2, Activation.Tanh));
+            net.AddLayer(new FullyConnLayer(6));
+            net.AddLayer(new TanhLayer());
+            net.AddLayer(new FullyConnLayer(2));
+            net.AddLayer(new TanhLayer());
+            net.AddLayer(new FullyConnLayer(2));
             net.AddLayer(new SoftmaxLayer(2));
 
             var trainer = new SgdTrainer(net) { LearningRate = 0.01, Momentum = 0.0, BatchSize = 10, L2Decay = 0.001 };
@@ -56,10 +59,12 @@ namespace Classify2DDemo
             } while (!Console.KeyAvailable);
 
             // Testing
-            var netx = new Volume(1, 1, 1);
+            var netx = new Volume(1, 1, 2);
             for (var ix = 0; ix < n; ix++)
             {
-                netx.Weights = data[ix];
+                netx.Set(0, 0, 0, data[ix][0]);
+                netx.Set(0, 0, 1, data[ix][1]);
+
                 var result = net.Forward(netx);
                 var c = net.GetPrediction();
                 bool accurate = c == labels[ix];
@@ -68,14 +73,16 @@ namespace Classify2DDemo
 
         private static void Classify2DUpdate(int n, List<double[]> data, TrainerBase trainer, List<int> labels)
         {
-            var netx = new Volume(1, 1, 1);
+            var netx = new Volume(1, 1, 2);
             var avloss = 0.0;
 
             for (var iters = 0; iters < 50; iters++)
             {
                 for (var ix = 0; ix < n; ix++)
                 {
-                    netx.Weights = data[ix];
+                    netx.Set(0, 0, 0, data[ix][0]);
+                    netx.Set(0, 0, 1, data[ix][1]);
+
                     trainer.Train(netx, labels[ix]);
                     avloss += trainer.Loss;
                 }
